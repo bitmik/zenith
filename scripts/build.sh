@@ -11,7 +11,7 @@ docker build -f docker/backend.Dockerfile -t k3s-dashboard-backend:$VERSION_TAG 
 
 # Build frontend
 echo "🎨 Building frontend..."
-docker build -f docker/frontend.Dockerfile -t k3s-dashboard-frontend:$VERSION_TAG .
+docker build --no-cache -f docker/frontend.Dockerfile -t k3s-dashboard-frontend:$VERSION_TAG .
 
 # Import into k3s
 echo "📥 Importing images into k3s..."
