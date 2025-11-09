@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: k3s-dashboard-backend
+  namespace: default
+  labels:
+    app: k3s-dashboard
+    component: backend
+spec:
+  type: NodePort
+  selector:
+    app: k3s-dashboard
+    component: backend
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
+      nodePort: 30001
+      protocol: TCP
+    - name: websocket
+      port: 3002
+      targetPort: 3002
+      nodePort: 30002
+      protocol: TCP

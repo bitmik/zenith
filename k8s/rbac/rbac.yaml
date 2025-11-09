@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k3s-dashboard
+  namespace: default
+  labels:
+    app: k3s-dashboard
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k3s-dashboard
+  labels:
+    app: k3s-dashboard
+rules:
+  # Lettura risorse core per la dashboard
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  # EndpointSlice per backend moderni dei Service
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  # Log dei pod (stream = GET sulla subresource)
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Exec nei pod (richiede create sulla subresource)
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  # Deployments/ReplicaSets per restart/gestione
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Metrics API aggregata (metrics-server)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k3s-dashboard
+  labels:
+    app: k3s-dashboard
+subjects:
+  - kind: ServiceAccount
+    name: k3s-dashboard
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: k3s-dashboard
+  apiGroup: rbac.authorization.k8s.io

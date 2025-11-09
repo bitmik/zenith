@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k3s-dashboard
+  namespace: default
+  labels:
+    app: k3s-dashboard
+  annotations:
+    # Decomment se usi cert-manager per HTTPS
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  rules:
+    - host: dashboard.local # Cambia con il tuo dominio
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: k3s-dashboard-frontend
+                port:
+                  number: 80
+  # Decomment per HTTPS
+  # tls:
+  # - hosts:
+  #   - dashboard.local
+  #   secretName: k3s-dashboard-tls
