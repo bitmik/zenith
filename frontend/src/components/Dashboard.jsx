@@ -41,7 +41,7 @@ const Dashboard = () => {
     if (isInitial) setInitialLoading(true);
     
     // Pods - sempre chiamata
-    kubernetesService.getPods()
+    kubernetesService.getPods({ t: Date.now() })
       .then(podsData => {
         // Aggiorna sempre i pod per riflettere cambiamenti di stato e età
         console.log(`✅ Pods: ${podsData.length}`);

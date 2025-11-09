@@ -17,7 +17,7 @@ class KubernetesService {
     });
   }
 
-  async getPods() { const { data } = await this.api.get('/pods'); return data; }
+  async getPods(params = {}) { const { data } = await this.api.get('/pods', { params }); return data; }
   async deletePod(ns, name) { const { data } = await this.api.delete(`/pods/${ns}/${name}`); return data; }
   async restartPod(ns, name) { const { data } = await this.api.post(`/pods/${ns}/${name}/restart`); return data; }
   async cleanupStandalone(ns = 'default') { const { data } = await this.api.delete(`/pods/cleanup/standalone?namespace=${ns}`); return data; }
