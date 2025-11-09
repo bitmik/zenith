@@ -224,7 +224,7 @@ const Dashboard = () => {
                 </svg>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">K3s Dashboard</h1>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Zenith</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Gestione Cluster Kubernetes</p>
               </div>
             </div>
@@ -307,13 +307,13 @@ const Dashboard = () => {
       </header>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="px-4 sm:px-6 lg:px-8 py-8">
         {/* Loading Iniziale - SOLO al primo avvio */}
         {initialLoading && (
           <div className="fixed inset-0 bg-white dark:bg-dark-bg flex items-center justify-center z-50">
             <div className="text-center">
               <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary-600 mx-auto mb-4"></div>
-              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">K3s Dashboard</h2>
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">Zenith</h2>
               <p className="text-gray-500 dark:text-gray-400">Connessione al cluster in corso...</p>
               <div className="flex justify-center space-x-2 mt-4">
                 <div className="animate-pulse bg-gray-300 dark:bg-gray-700 h-3 w-3 rounded-full"></div>
@@ -478,7 +478,8 @@ const Dashboard = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pod</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Namespace</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Età</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">CPU</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Memory</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tipo</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Azioni</th>
                     </tr>
@@ -492,7 +493,7 @@ const Dashboard = () => {
                       
                       return (
                         <tr key={`${pod.namespace}-${pod.name}`} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-5">
                             <div className="flex items-center">
                               <div className={`flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg ${
                                 pod.status === 'Running' 
@@ -510,21 +511,18 @@ const Dashboard = () => {
                                 </svg>
                               </div>
                               <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-xs" title={pod.name}>
+                                <div className="text-base font-medium text-gray-900 dark:text-white truncate max-w-xs" title={pod.name}>
                                   {pod.name}
-                                </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                  {podAge}
                                 </div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-6 py-5 whitespace-nowrap">
                             <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
                               {pod.namespace}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-6 py-5 whitespace-nowrap">
                             <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                               pod.status === 'Running' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                               pod.status === 'Succeeded' || pod.status === 'Completed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200' :
@@ -542,10 +540,20 @@ const Dashboard = () => {
                               {pod.status === 'ContainerStatusUnknown' ? 'Unknown' : pod.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                          <td className="px-6 py-5 whitespace-nowrap text-sm">
+                            <span className="font-mono text-xs text-cyan-400 dark:text-cyan-300">
+                              {podMetrics ? formatCpu(podMetrics.containers[0]?.usage?.cpu) : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5 whitespace-nowrap text-sm">
+                            <span className="font-mono text-xs text-cyan-400 dark:text-cyan-300">
+                              {podMetrics ? formatMemory(podMetrics.containers[0]?.usage?.memory) : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
                             <span className="font-mono text-xs">{podAge}</span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-6 py-5 whitespace-nowrap">
                             {pod.isManaged ? (
                               <span className="px-3 py-1 inline-flex items-center text-xs leading-5 font-semibold rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
                                 <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -562,10 +570,10 @@ const Dashboard = () => {
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-1">
+                          <td className="px-6 py-5 whitespace-nowrap text-right text-sm font-medium space-x-1">
                             <button 
                               onClick={() => setSelectedPodForLogs(pod)}
-                              className={`p-2 rounded-lg transition ${
+                              className={`p-1 rounded-lg transition ${
                                 actionLoading 
                                   ? 'text-gray-400 cursor-not-allowed' 
                                   : 'text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900'
@@ -577,7 +585,7 @@ const Dashboard = () => {
                             </button>
                             <button 
                               onClick={() => setSelectedPodForTerminal(pod)}
-                              className={`p-2 rounded-lg transition ${
+                              className={`p-1 rounded-lg transition ${
                                 actionLoading 
                                   ? 'text-gray-400 cursor-not-allowed' 
                                   : 'text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-200 hover:bg-green-50 dark:hover:bg-green-900'
@@ -590,7 +598,7 @@ const Dashboard = () => {
                             {pod.isManaged && (
                               <button 
                                 onClick={() => restartPod(pod)}
-                                className={`p-2 rounded-lg transition ${
+                                className={`p-1 rounded-lg transition ${
                                   actionLoading 
                                     ? 'text-gray-400 cursor-not-allowed' 
                                     : 'text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-900'
@@ -604,7 +612,7 @@ const Dashboard = () => {
                             {!pod.isManaged && (
                               <button 
                                 onClick={() => deletePod(pod)}
-                                className={`p-2 rounded-lg transition ${
+                                className={`p-1 rounded-lg transition ${
                                   actionLoading 
                                     ? 'text-gray-400 cursor-not-allowed' 
                                     : 'text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-200 hover:bg-red-50 dark:hover:bg-red-900'
