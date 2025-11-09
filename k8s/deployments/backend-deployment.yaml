@@ -26,8 +26,8 @@ spec:
       serviceAccountName: k3s-dashboard
       containers:
         - name: backend
-          image: k3s-dashboard-backend:latest
-          imagePullPolicy: IfNotPresent
+          image: k3s-dashboard-backend:__VERSION_TAG__
+          imagePullPolicy: Always
           ports:
             - containerPort: 3001
               name: http

@@ -25,8 +25,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: k3s-dashboard-frontend:latest
-          imagePullPolicy: IfNotPresent
+          image: k3s-dashboard-frontend:__VERSION_TAG__
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
               name: http

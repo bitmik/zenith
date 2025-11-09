@@ -43,10 +43,9 @@ const Dashboard = () => {
     // Pods - sempre chiamata
     kubernetesService.getPods()
       .then(podsData => {
-        if (podsData.length !== pods.length || isInitial) {
-          console.log(`✅ Pods: ${podsData.length}`);
-          setPods(podsData);
-        }
+        // Aggiorna sempre i pod per riflettere cambiamenti di stato e età
+        console.log(`✅ Pods: ${podsData.length}`);
+        setPods(podsData);
       })
       .catch(e => {
         console.error('❌ Pods error:', e.message);
@@ -68,17 +67,15 @@ const Dashboard = () => {
       });
 
     // Metrics - opzionale, non blocca
-    if (isInitial) {
-      kubernetesService.getPodMetrics('all')
-        .then(metricsData => {
-          console.log(`📏 Metrics: ${metricsData.items?.length || 0}`);
-          setMetrics(metricsData);
-        })
-        .catch(e => {
-          console.warn('⚠️  Metrics non disponibili (normale in K3s light):', e.message);
-          setMetrics({ items: [] }); // Fallback vuoto, non blocca UI
-        });
-    }
+    kubernetesService.getPodMetrics('all')
+      .then(metricsData => {
+        console.log(`📏 Metrics: ${metricsData.items?.length || 0}`);
+        setMetrics(metricsData);
+      })
+      .catch(e => {
+        console.warn('⚠️  Metrics non disponibili (normale in K3s light):', e.message);
+        setMetrics({ items: [] }); // Fallback vuoto, non blocca UI
+      });
 
     if (isInitial) {
       console.log('🎉 Caricamento iniziale completato');
