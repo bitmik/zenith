@@ -1,42 +1,65 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
-  ],
   darkMode: 'class',
+  content: [
+    './src/**/*.{js,jsx,ts,tsx}',
+  ],
   theme: {
     extend: {
+      fontFamily: {
+        orbitron: ['Orbitron', 'sans-serif'],
+      },
       colors: {
-        primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          900: '#0c4a6e',
-        },
-        dark: {
-          bg: '#0f172a',
-          card: '#1e293b',
-          border: '#334155',
-        }
+        // Background e Surface
+        'zenith-bg': '#0f1117',
+        'zenith-card': '#1a1c23',
+        'zenith-border': '#2c2f36',
+
+        // Neon accents
+        'zenith-accent': '#00ffe0',
+        'zenith-magenta': '#b200ff',
+
+        // Typography
+        'zenith-text': '#e5e7eb',
+        'zenith-subtle': '#9ca3af',
+        'zenith-muted': '#6b7280',
+
+        // Status colors (opzionali)
+        'zenith-success': '#00ffab',
+        'zenith-error': '#ff4d6d',
+        'zenith-warning': '#ffc300',
+        'zenith-info': '#00bfff',
+      },
+      boxShadow: {
+        // Neon glow for hover/effects
+        'neon': '0 0 10px #00ffe044, 0 0 25px #00ffe033',
+        'neon-blue': '0 0 10px #00e0ff66, 0 0 20px #00e0ff33',
+        'neon-green': '0 0 10px #00ffab66, 0 0 20px #00ffab33',
+        'neon-magenta': '0 0 10px #b200ff66, 0 0 20px #b200ff33',
       },
       animation: {
-        'fade-in': 'fadeIn 0.3s ease-in',
-        'slide-up': 'slideUp 0.4s ease-out',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'pulse-neon': 'pulseNeon 1.8s ease-in-out infinite',
+        'fade-in': 'fadeIn 0.6s ease-out both',
       },
       keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
+        pulseNeon: {
+          '0%, 100%': {
+            boxShadow: '0 0 10px #00ffe066, 0 0 25px #00ffe033',
+          },
+          '50%': {
+            boxShadow: '0 0 20px #00ffe0cc, 0 0 35px #00ffe0aa',
+          },
         },
-        slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        }
-      }
+        fadeIn: {
+          '0%': { opacity: 0, transform: 'translateY(20px)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
+        },
+      },
     },
   },
-  plugins: [],
-}
+  plugins: [
+    // Aggiungi questi plugin se usi moduli form o testo ricco
+    require('@tailwindcss/forms'),
+    require('@tailwindcss/typography'),
+  ],
+};

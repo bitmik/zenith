@@ -3,12 +3,38 @@ import cors from 'cors';
 import https from 'https';
 import http from 'http';
 import fs from 'fs';
+import crypto from 'crypto';
 import { spawn } from 'child_process';
 import * as k8s from '@kubernetes/client-node';
 import { WebSocketServer } from 'ws';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const DASHBOARD_USER = process.env.DASHBOARD_USER || 'admin';
+const DASHBOARD_PASS = process.env.DASHBOARD_PASS || 'admin';
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 3600000);
+
+// In-memory session table (token -> { user, expiresAt }); restart or multi-pod setups require shared storage.
+const sessions = new Map();
+
+const purgeExpiredSessions = () => {
+  const now = Date.now();
+  for (const [token, session] of sessions.entries()) {
+    if (session.expiresAt <= now) sessions.delete(token);
+  }
+};
+
+const generateToken = () => crypto.randomBytes(32).toString('hex');
+
+const validateToken = (token) => {
+  if (!token || !sessions.has(token)) return false;
+  const session = sessions.get(token);
+  if (session.expiresAt <= Date.now()) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+};
 
 // ==== K8s clients/state ====
 let k8sApi = null;
@@ -29,6 +55,7 @@ function loadServiceAccount() {
   try { saCA = fs.readFileSync(SA_CA_PATH); } catch (_) { saCA = null; }
 }
 
+// Initializes kubeconfig (k3s file, in-cluster, or ~/.kube/config) and warms up API clients.
 async function initializeClient() {
   try {
     console.log('📦 Caricamento kubeconfig...');
@@ -113,6 +140,49 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, _res, next) => {
   console.log(`📥 ${req.method} ${req.url}`);
   next();
+});
+
+// ==== AUTH MIDDLEWARE ====
+app.use((req, res, next) => {
+  // Skip auth for non-API routes, health check, auth endpoints, and CORS preflight
+  if (!req.path.startsWith('/api') || req.method === 'OPTIONS') return next();
+  if (req.path === '/api/status' || req.path.startsWith('/api/auth')) return next();
+
+  purgeExpiredSessions();
+
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!validateToken(token)) {
+    return res.status(401).json({ error: 'Non autorizzato' });
+  }
+
+  req.user = sessions.get(token)?.user || 'system';
+  return next();
+});
+
+// ==== AUTH ROUTES ====
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Credenziali mancanti' });
+  }
+  if (username !== DASHBOARD_USER || password !== DASHBOARD_PASS) {
+    return res.status(401).json({ error: 'Credenziali non valide' });
+  }
+
+  const token = generateToken();
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  sessions.set(token, { user: username, expiresAt });
+  return res.json({ token, expiresAt });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (token && sessions.has(token)) {
+    sessions.delete(token);
+  }
+  return res.json({ success: true });
 });
 
 // ==== STATUS ====
@@ -357,6 +427,114 @@ app.delete('/api/pods/cleanup/standalone', async (req, res) => {
   }
 });
 
+app.get('/api/pods/:namespace/:name', async (req, res) => {
+  if (!k8sApi) return res.status(503).json({ error: 'Kubernetes non disponibile' });
+  const namespace = String(req.params.namespace || '');
+  const name = String(req.params.name || '');
+  if (!namespace || !name) return res.status(400).json({ error: 'Parametri mancanti' });
+
+  try {
+    const podResp = await k8sApi.readNamespacedPod(name, namespace);
+    const pod = podResp.body || {};
+    const containers = (pod.spec?.containers || []).map(container => ({
+      name: container.name,
+      image: container.image,
+      ports: container.ports || [],
+      env: container.env || [],
+      resources: container.resources || {}
+    }));
+    const initContainers = (pod.spec?.initContainers || []).map(container => ({
+      name: container.name,
+      image: container.image,
+      ports: container.ports || [],
+      env: container.env || [],
+      resources: container.resources || {}
+    }));
+    const containerStatuses = pod.status?.containerStatuses || [];
+    res.json({
+      containers,
+      initContainers,
+      metadata: {
+        name: pod.metadata?.name,
+        namespace: pod.metadata?.namespace,
+        labels: pod.metadata?.labels,
+        annotations: pod.metadata?.annotations,
+        creationTimestamp: pod.metadata?.creationTimestamp,
+        ownerReferences: pod.metadata?.ownerReferences || []
+      },
+      spec: {
+        nodeName: pod.spec?.nodeName,
+        serviceAccountName: pod.spec?.serviceAccountName,
+        restartPolicy: pod.spec?.restartPolicy
+      },
+      status: {
+        phase: pod.status?.phase,
+        podIP: pod.status?.podIP,
+        hostIP: pod.status?.hostIP,
+        startTime: pod.status?.startTime,
+        conditions: pod.status?.conditions || [],
+        containerStatuses
+      }
+    });
+  } catch (e) {
+    console.error('❌ Errore pod details:', e?.body?.message || e.message);
+    res.status(500).json({ error: 'Dettagli pod non disponibili' });
+  }
+});
+
+// Fetches events for a single pod; the API is noisy so we compress it into a slim shape for the UI.
+async function fetchPodEvents(namespace, name) {
+  if (!k8sApi) return [];
+  const eventsResp = await k8sApi.listNamespacedEvent(
+    namespace,
+    undefined,
+    undefined,
+    undefined,
+    `involvedObject.name=${name}`
+  );
+  const items = eventsResp.body?.items || [];
+  return items.map(event => ({
+    type: event.type || 'Normal',
+    reason: event.reason || 'Evento',
+    message: event.message || '',
+    count: event.count || 1,
+    firstTimestamp: event.firstTimestamp || event.eventTime || null,
+    lastTimestamp: event.lastTimestamp || event.eventTime || null,
+    source: event.source?.component || null
+  }));
+}
+
+app.get('/api/pods/:namespace/:name/events', async (req, res) => {
+  if (!k8sApi) return res.status(503).json({ error: 'Kubernetes non disponibile' });
+  const namespace = String(req.params.namespace || '');
+  const name = String(req.params.name || '');
+  if (!namespace || !name) return res.status(400).json({ error: 'Parametri mancanti' });
+
+  try {
+    const events = await fetchPodEvents(namespace, name);
+    res.json(events);
+  } catch (e) {
+    console.error('❌ Errore events:', e?.body?.message || e.message);
+    res.status(500).json({ error: 'Eventi non disponibili' });
+  }
+});
+
+app.get('/api/pods/:namespace/:name/describe', async (req, res) => {
+  const namespace = String(req.params.namespace || '');
+  const name = String(req.params.name || '');
+  if (!namespace || !name) return res.status(400).json({ error: 'Parametri mancanti' });
+
+  try {
+    const base = kubectlAuthArgs();
+    const args = [...base, 'describe', 'pod', name, '-n', namespace];
+    const output = await runKubectl(args);
+    res.json({ output });
+  } catch (e) {
+    console.error('❌ Errore describe pod:', e.message);
+    res.status(500).json({ error: 'Describe non disponibile', details: e.message });
+  }
+});
+
 // ==== DEPLOYMENTS ====
 app.get('/api/deployments', async (_req, res) => {
   if (!appsV1Api) return res.status(503).json({ error: 'Kubernetes non disponibile' });
@@ -437,6 +615,74 @@ app.patch('/api/deployments/:namespace/:name/scale', async (req, res) => {
   } catch (e) {
     console.error('❌ Errore scale deployment:', e?.body?.message || e.message);
     res.status(500).json({ error: 'Scaling fallito' });
+  }
+});
+
+app.post('/api/deployments/:namespace/:name/restart', async (req, res) => {
+  if (!appsV1Api) return res.status(503).json({ error: 'Kubernetes non disponibile' });
+  const namespace = String(req.params.namespace || '');
+  const name = String(req.params.name || '');
+  if (!namespace || !name) return res.status(400).json({ error: 'Parametri mancanti' });
+
+  try {
+    const patch = {
+      spec: {
+        template: {
+          metadata: {
+            annotations: {
+              'kubectl.kubernetes.io/restartedAt': new Date().toISOString()
+            }
+          }
+        }
+      }
+    };
+
+    await appsV1Api.patchNamespacedDeployment(
+      name,
+      namespace,
+      patch,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { headers: { 'Content-Type': 'application/strategic-merge-patch+json' } }
+    );
+    res.json({ message: `Deployment ${name} riavviato` });
+  } catch (e) {
+    console.error('❌ Errore restart deployment:', e?.body?.message || e.message);
+    res.status(500).json({ error: 'Riavvio deployment fallito' });
+  }
+});
+
+app.get('/api/deployments/:namespace/:name/status', async (req, res) => {
+  if (!appsV1Api) return res.status(503).json({ error: 'Kubernetes non disponibile' });
+  const namespace = String(req.params.namespace || '');
+  const name = String(req.params.name || '');
+  if (!namespace || !name) return res.status(400).json({ error: 'Parametri mancanti' });
+
+  try {
+    const depResp = await appsV1Api.readNamespacedDeployment(name, namespace);
+    const dep = depResp.body || {};
+    const desiredReplicas = dep.spec?.replicas ?? 0;
+    const updatedReplicas = dep.status?.updatedReplicas || 0;
+    const readyReplicas = dep.status?.readyReplicas || 0;
+    const availableReplicas = dep.status?.availableReplicas || 0;
+    const conditions = dep.status?.conditions || [];
+    const rolloutComplete = updatedReplicas === desiredReplicas && availableReplicas === desiredReplicas;
+    res.json({
+      name,
+      namespace,
+      desiredReplicas,
+      updatedReplicas,
+      readyReplicas,
+      availableReplicas,
+      conditions,
+      rolloutComplete
+    });
+  } catch (e) {
+    console.error('❌ Errore status deployment:', e?.body?.message || e.message);
+    res.status(500).json({ error: 'Status deployment non disponibile' });
   }
 });
 
@@ -597,6 +843,22 @@ function kubectlAuthArgs() {
     args.push(`--kubeconfig=${K3S_DEFAULT_KUBECONFIG}`);
   }
   return args;
+}
+
+// Convenience helper to exec kubectl commands and capture stdout/stderr (used for describe/exec/logs).
+function runKubectl(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('kubectl', args);
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) return resolve(stdout);
+      return reject(new Error(stderr || `kubectl exited with code ${code}`));
+    });
+  });
 }
 
 function handleLogStream(ws, namespace, pod, container) {

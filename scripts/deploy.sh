@@ -1,52 +1,119 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-VERSION_TAG=$1
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/deploy.sh --version <tag> [options]
 
-if [ -z "$VERSION_TAG" ]; then
-  echo "❌ Error: No version tag provided."
-  echo "Usage: ./scripts/deploy.sh <version_tag>"
+Options:
+  -v, --version <tag>         Version tag to deploy (required)
+  -n, --namespace <name>      Target namespace (default: default)
+      --backend-image <img>   Override backend image (default: k3s-dashboard-backend:<version>)
+      --frontend-image <img>  Override frontend image (default: k3s-dashboard-frontend:<version>)
+      --json                  Emit a JSON summary at the end
+  -h, --help                  Show this help
+
+You can still call './scripts/deploy.sh <version>' for backward compatibility.
+EOF
+}
+
+VERSION_TAG=""
+NAMESPACE="default"
+BACKEND_IMAGE=""
+FRONTEND_IMAGE=""
+OUTPUT_JSON=false
+
+positional_version=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -v|--version)
+      VERSION_TAG="$2"; shift 2;;
+    -n|--namespace)
+      NAMESPACE="$2"; shift 2;;
+    --backend-image)
+      BACKEND_IMAGE="$2"; shift 2;;
+    --frontend-image)
+      FRONTEND_IMAGE="$2"; shift 2;;
+    --json)
+      OUTPUT_JSON=true; shift;;
+    -h|--help)
+      usage; exit 0;;
+    *)
+      if [[ -z "$positional_version" ]]; then
+        positional_version="$1"; shift;
+      else
+        echo "❌ Unknown argument: $1" >&2; usage; exit 1;
+      fi;;
+  esac
+done
+
+if [[ -z "$VERSION_TAG" && -n "$positional_version" ]]; then
+  VERSION_TAG="$positional_version"
+fi
+
+if [[ -z "$VERSION_TAG" ]]; then
+  echo "❌ Error: missing --version" >&2
+  usage
   exit 1
 fi
 
-echo "🚀 Deploying K3s Dashboard version $VERSION_TAG to cluster..."
+BACKEND_IMAGE_FINAL="${BACKEND_IMAGE:-k3s-dashboard-backend:$VERSION_TAG}"
+FRONTEND_IMAGE_FINAL="${FRONTEND_IMAGE:-k3s-dashboard-frontend:$VERSION_TAG}"
 
-# Create a temporary directory for modified manifests
+echo "🚀 Deploying version $VERSION_TAG to namespace $NAMESPACE"
+
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf -- "$TEMP_DIR"' EXIT
 
-# Replace placeholder with the actual version tag
-echo "📝 Preparing manifests for version $VERSION_TAG..."
-sed "s/__VERSION_TAG__/$VERSION_TAG/g" k8s/deployments/backend-deployment.yaml > $TEMP_DIR/backend-deployment.yaml
-sed "s/__VERSION_TAG__/$VERSION_TAG/g" k8s/deployments/frontend-deployment.yaml > $TEMP_DIR/frontend-deployment.yaml
+copy_manifests() {
+  local src_dir=$1
+  local dest_dir=$2
+  mkdir -p "$dest_dir"
+  cp -R "$src_dir"/* "$dest_dir"/
+  find "$dest_dir" -type f -name '*.yaml' -print0 | while IFS= read -r -d '' file; do
+    sed -i "s/__VERSION_TAG__/$VERSION_TAG/g" "$file"
+    NAMESPACE="$NAMESPACE" perl -0pi -e 's/(namespace:\s*)default/$1$ENV{NAMESPACE}/g' "$file"
+  done
+}
 
-# Apply RBAC first
-echo "🔐 Applying RBAC..."
-kubectl apply -f k8s/rbac/
+echo "📝 Preparing manifests..."
+copy_manifests k8s/deployments "$TEMP_DIR/deployments"
+copy_manifests k8s/services "$TEMP_DIR/services"
+copy_manifests k8s/rbac "$TEMP_DIR/rbac"
 
-# Apply deployments from the temporary directory
-echo "📦 Deploying applications..."
-kubectl apply -f $TEMP_DIR/
+BACKEND_IMAGE_FINAL="$BACKEND_IMAGE_FINAL" perl -0pi -e 's|(image:\s*)k3s-dashboard-backend:\S+|$1$ENV{BACKEND_IMAGE_FINAL}|g' "$TEMP_DIR/deployments/backend-deployment.yaml"
+FRONTEND_IMAGE_FINAL="$FRONTEND_IMAGE_FINAL" perl -0pi -e 's|(image:\s*)k3s-dashboard-frontend:\S+|$1$ENV{FRONTEND_IMAGE_FINAL}|g' "$TEMP_DIR/deployments/frontend-deployment.yaml"
 
-# Apply services
-echo "🌐 Creating services..."
-kubectl apply -f k8s/services/
+echo "🔐 Applying RBAC"
+kubectl apply -f "$TEMP_DIR/rbac"
 
-# Optional: Apply ingress
-# kubectl apply -f k8s/ingress/
+echo "📦 Applying deployments"
+kubectl apply -f "$TEMP_DIR/deployments"
 
-echo ""
-echo "✅ Deployment of version $VERSION_TAG complete!"
-echo "   Run 'kubectl rollout status deployment/k3s-dashboard-frontend' to check progress."
-echo ""
-echo "📊 Checking status..."
-kubectl get pods -l app=k3s-dashboard
-echo ""
-kubectl get svc -l app=k3s-dashboard
-echo ""
-echo "🌍 Access the dashboard at:"
-echo "   http://$(hostname -I | awk '{print $1}'):30080"
-echo ""
-echo "📝 Logs:"
-echo "   kubectl logs -l app=k3s-dashboard,component=backend -f"
-echo "   kubectl logs -l app=k3s-dashboard,component=frontend -f"
+echo "🌐 Applying services"
+kubectl apply -f "$TEMP_DIR/services"
+
+echo "📊 Rollout status"
+kubectl rollout status deployment/k3s-dashboard-backend -n "$NAMESPACE" --timeout=60s || true
+kubectl rollout status deployment/k3s-dashboard-frontend -n "$NAMESPACE" --timeout=60s || true
+
+echo "✅ Deployment complete"
+
+SUMMARY=$(cat <<JSON
+{
+  "status": "success",
+  "version": "$VERSION_TAG",
+  "namespace": "$NAMESPACE",
+  "backendImage": "$BACKEND_IMAGE_FINAL",
+  "frontendImage": "$FRONTEND_IMAGE_FINAL"
+}
+JSON
+)
+
+if [[ "$OUTPUT_JSON" == true ]]; then
+  echo "$SUMMARY"
+else
+  echo "$SUMMARY"
+  echo "💡 Usa --json per output machine-readable"
+fi

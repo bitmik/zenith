@@ -4,226 +4,40 @@
   box-sizing: border-box;
 }
 
+:root {
+  font-family: 'Orbitron', sans-serif;
+  background-color: #0f1117;
+  color: #e5e7eb;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
-  color: #333;
+  background-color: #0f1117;
 }
 
-.app {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem;
+
+.zenith-ticker-container {
+  overflow: hidden;
+  width: 100%;
 }
 
-.header {
-  background: white;
-  padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  margin-bottom: 2rem;
-  display: flex;
-  justify-content: space-between;
+.zenith-ticker-line {
+  display: inline-flex;
+  width: max-content;
+  animation: zenith-marquee 20s linear infinite;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.header h1 {
-  color: #667eea;
-  font-size: 2rem;
-}
-
-.actions {
-  display: flex;
-  gap: 1rem;
-}
-
-button {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background: #667eea;
-  color: white;
-}
-
-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-create {
-  background: #10b981;
-}
-
-.btn-create:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-}
-
-.btn-restart {
-  background: #f59e0b;
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-}
-
-.btn-delete {
-  background: #ef4444;
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-}
-
-.alert {
-  padding: 1rem 1.5rem;
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
-  font-weight: 500;
-}
-
-.alert-error {
-  background: #fee2e2;
-  color: #991b1b;
-  border-left: 4px solid #ef4444;
-}
-
-.alert-success {
-  background: #d1fae5;
-  color: #065f46;
-  border-left: 4px solid #10b981;
-}
-
-.loader {
-  text-align: center;
-  padding: 2rem;
-  font-size: 1.2rem;
-  color: white;
-  font-weight: 600;
-}
-
-.pods-container {
-  background: white;
-  padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.pods-container h2 {
-  margin-bottom: 1.5rem;
-  color: #667eea;
-}
-
-.no-pods {
-  text-align: center;
-  padding: 3rem;
-  color: #6b7280;
-  font-style: italic;
-}
-
-.pods-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1.5rem;
-}
-
-.pod-card {
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 1.5rem;
-  transition: all 0.3s ease;
-  background: #fafafa;
-}
-
-.pod-card:hover {
-  border-color: #667eea;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
-  transform: translateY(-4px);
-}
-
-.pod-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  margin-bottom: 1rem;
-  gap: 1rem;
-}
-
-.pod-header h3 {
-  color: #1f2937;
-  font-size: 1.1rem;
-  word-break: break-word;
-  flex: 1;
-}
-
-.status {
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.status-running {
-  background: #d1fae5;
-  color: #065f46;
+.zenith-ticker-line > div {
+  flex-shrink: 0;
 }
 
-.status-pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.status-failed {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-unknown {
-  background: #e5e7eb;
-  color: #374151;
-}
-
-.pod-info {
-  margin-bottom: 1rem;
-  color: #6b7280;
-  font-size: 0.95rem;
-}
-
-.pod-info p {
-  margin: 0.5rem 0;
-}
-
-.pod-actions {
-  display: flex;
-  gap: 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-.pod-actions button {
-  flex: 1;
-}
-
-@media (max-width: 768px) {
-  .header {
-    flex-direction: column;
-    align-items: stretch;
+@keyframes zenith-marquee {
+  0% {
+    transform: translateX(0);
   }
-
-  .actions {
-    flex-direction: column;
-  }
-
-  .pods-grid {
-    grid-template-columns: 1fr;
+  100% {
+    transform: translateX(-50%);
   }
 }

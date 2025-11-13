@@ -1,20 +1,67 @@
 import axios from 'axios';
 
-// Base HTTP per API
-const HTTP_BASE = process.env.REACT_APP_BACKEND_HTTP || 'http://192.168.0.156:30001';
-const API_URL = `${HTTP_BASE.replace(/\/$/, '')}/api`;
+// Resolve backend base URLs, with environment overrides and sensible local fallbacks.
+const resolveHttpBase = () => {
+  if (process.env.REACT_APP_BACKEND_HTTP) {
+    return process.env.REACT_APP_BACKEND_HTTP.replace(/\/$/, '');
+  }
 
-// Base WS separata (meglio una var dedicata)
-const WS_BASE = process.env.REACT_APP_BACKEND_WS
-  ? process.env.REACT_APP_BACKEND_WS.replace(/\/$/, '')
-  : ((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + '192.168.0.156:30002');
+  if (typeof window !== 'undefined') {
+    if (process.env.NODE_ENV === 'development') {
+      return 'http://localhost:3001';
+    }
+    return window.location.origin.replace(/\/$/, '');
+  }
 
+  return 'http://localhost:3001';
+};
+
+const resolveWsBase = () => {
+  if (process.env.REACT_APP_BACKEND_WS) {
+    return process.env.REACT_APP_BACKEND_WS.replace(/\/$/, '');
+  }
+
+  if (typeof window !== 'undefined') {
+    if (process.env.NODE_ENV === 'development') {
+      return 'ws://localhost:3002';
+    }
+    const origin = window.location.origin.replace(/\/$/, '');
+    return origin.replace(/^http/, 'ws');
+  }
+
+  return 'ws://localhost:3002';
+};
+
+const HTTP_BASE = resolveHttpBase();
+const WS_BASE = resolveWsBase();
+const API_URL = `${HTTP_BASE}/api`;
+
+if (process.env.NODE_ENV !== 'production') {
+  // eslint-disable-next-line no-console
+  console.info('[kubernetesService] HTTP_BASE:', HTTP_BASE, 'WS_BASE:', WS_BASE);
+  // eslint-disable-next-line no-console
+  console.info('[kubernetesService] REACT_APP_BACKEND_HTTP:', process.env.REACT_APP_BACKEND_HTTP);
+}
+
+// Centralized HTTP/WebSocket client; wraps axios with base URLs and exposes the operations used across the UI.
 class KubernetesService {
   constructor() {
     this.api = axios.create({
       baseURL: API_URL,
       timeout: 10000,
     });
+    this.token = null;
+    this.onUnauthorized = null;
+
+    this.api.interceptors.response.use(
+      response => response,
+      (error) => {
+        if (error?.response?.status === 401 && typeof this.onUnauthorized === 'function') {
+          this.onUnauthorized(error);
+        }
+        return Promise.reject(error);
+      }
+    );
   }
 
   async getPods(params = {}) { const { data } = await this.api.get('/pods', { params }); return data; }
@@ -26,17 +73,49 @@ class KubernetesService {
   async getDeployments() { const { data } = await this.api.get('/deployments'); return data; }
   async createDeployment(payload) { const { data } = await this.api.post('/deployments', payload); return data; }
   async scaleDeployment(ns, name, replicas) { const { data } = await this.api.patch(`/deployments/${ns}/${name}/scale`, { replicas }); return data; }
+  async restartDeployment(ns, name) { const { data } = await this.api.post(`/deployments/${ns}/${name}/restart`); return data; }
+  async getDeploymentStatus(ns, name) { const { data } = await this.api.get(`/deployments/${ns}/${name}/status`); return data; }
   async deleteDeployment(ns, name) { const { data } = await this.api.delete(`/deployments/${ns}/${name}`); return data; }
   async getServices() { const { data } = await this.api.get('/services'); return data; }
+  async getPodDetails(ns, name) { const { data } = await this.api.get(`/pods/${ns}/${name}`); return data; }
+  async getPodEvents(ns, name) { const { data } = await this.api.get(`/pods/${ns}/${name}/events`); return data; }
+  async describePod(ns, name) { const { data } = await this.api.get(`/pods/${ns}/${name}/describe`); return data; }
+  async getMarketTicker() { const { data } = await this.api.get('/markets/ticker'); return data; }
 
-  // WebSocket per log streaming
+  setUnauthorizedHandler(handler) {
+    this.onUnauthorized = handler;
+  }
+
+  setAuthToken(token) {
+    this.token = token;
+    if (token) {
+      this.api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    } else {
+      delete this.api.defaults.headers.common.Authorization;
+    }
+  }
+
+  async login(username, password) {
+    const { data } = await this.api.post('/auth/login', { username, password });
+    if (data?.token) this.setAuthToken(data.token);
+    return data;
+  }
+
+  async logout() {
+    try {
+      await this.api.post('/auth/logout');
+    } catch (_) {
+      // ignore logout errors
+    }
+    this.setAuthToken(null);
+  }
+
   streamLogs(namespace, podName, container) {
     const params = new URLSearchParams({ type: 'logs', namespace, pod: podName });
     if (container) params.append('container', container);
     return new WebSocket(`${WS_BASE}/?${params.toString()}`);
   }
 
-  // WebSocket per terminal
   openTerminal(namespace, podName, container) {
     const params = new URLSearchParams({ type: 'exec', namespace, pod: podName });
     if (container) params.append('container', container);
@@ -44,4 +123,5 @@ class KubernetesService {
   }
 }
 
-export default new KubernetesService();
+const kubernetesService = new KubernetesService();
+export default kubernetesService;
